@@ -19,7 +19,7 @@ import seaborn as sns
 # ---------- Configuration ----------
 st.set_page_config(
     page_title="CPS School Analysis Dashboard",
-    page_icon="🏫",
+    page_icon="",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -70,7 +70,7 @@ def load_data():
 
 # ---------- Main App ----------
 def main():
-    st.title("🏫 CPS School Analysis Dashboard")
+    st.title("CPS School Analysis Dashboard")
     st.markdown("""
     **Exploring the relationship between neighborhood disadvantage and school outcomes**  
     *Does graduating from a CPS high school translate equally into college enrollment across neighborhoods?*
@@ -85,10 +85,10 @@ def main():
         return
     
     # ---------- Sidebar ----------
-    st.sidebar.title("📊 Dashboard Controls")
+    st.sidebar.title("Dashboard Controls")
     
     # Data overview
-    st.sidebar.markdown("### 📈 Data Overview")
+    st.sidebar.markdown("### Data Overview")
     st.sidebar.info(f"""
     - **Schools**: {len(schools):,}
     - **Census Tracts**: {len(acs):,}
@@ -96,14 +96,14 @@ def main():
     """)
     
     # Navigation
-    st.sidebar.markdown("### 🔍 Navigation")
+    st.sidebar.markdown("### Navigation")
     page = st.sidebar.radio(
         "Select Section",
-        ["🏠 Overview", "📊 School Analysis", "🗺️ Spatial Analysis", "📈 Regression Results", "🔍 Detailed Analysis"]
+        ["Overview", "School Analysis", "Spatial Analysis", "Regression Results", "Detailed Analysis"]
     )
     
     # Filter controls
-    st.sidebar.markdown("### 🎯 Filters")
+    st.sidebar.markdown("### Filters")
     
     # School type filter
     if 'Primary_Category' in schools.columns:
@@ -134,7 +134,7 @@ def main():
         ]
     
     # ---------- Page 1: Overview ----------
-    if page == "🏠 Overview":
+    if page == "Overview":
         st.header("Project Overview")
         
         col1, col2 = st.columns(2)
@@ -168,7 +168,7 @@ def main():
             """)
         
         # Key statistics
-        st.subheader("📊 Key Statistics")
+        st.subheader("Key Statistics")
         
         col1, col2, col3, col4 = st.columns(4)
         
@@ -189,7 +189,7 @@ def main():
             st.metric("Average Disadvantage Score", f"{avg_ndi:.2f}")
         
         # Distribution plots
-        st.subheader("📈 Outcome Distributions")
+        st.subheader("Outcome Distributions")
         
         fig = go.Figure()
         
@@ -226,7 +226,7 @@ def main():
         st.plotly_chart(fig, use_container_width=True)
         
         # Correlation matrix
-        st.subheader("🔗 Correlation Matrix")
+        st.subheader("Correlation Matrix")
         
         corr_vars = ['Graduation_4_Year_School_Pct_Year_2', 
                     'College_Enrollment_School_Pct_Year_2',
@@ -248,11 +248,11 @@ def main():
             st.plotly_chart(fig, use_container_width=True)
     
     # ---------- Page 2: School Analysis ----------
-    elif page == "📊 School Analysis":
+    elif page == "School Analysis":
         st.header("School-Level Analysis")
         
         # Scatter plots
-        st.subheader("📊 Relationship Analysis")
+        st.subheader("Relationship Analysis")
         
         col1, col2 = st.columns(2)
         
@@ -289,7 +289,7 @@ def main():
             st.plotly_chart(fig, use_container_width=True)
         
         # Transition Gap analysis
-        st.subheader("🎯 Transition Gap Analysis")
+        st.subheader("Transition Gap Analysis")
         
         col1, col2 = st.columns(2)
         
@@ -313,7 +313,7 @@ def main():
         
         with col2:
             # Top schools with largest gaps
-            st.markdown("### 🏆 Schools with Largest Transition Gaps")
+            st.markdown("### Schools with Largest Transition Gaps")
             
             top_gaps = schools_filtered.nlargest(10, 'Transition_Gap')[['Long_Name', 'Transition_Gap', 'Graduation_4_Year_School_Pct_Year_2', 'College_Enrollment_School_Pct_Year_2']]
             top_gaps = top_gaps.rename(columns={
@@ -333,7 +333,7 @@ def main():
             )
         
         # Interactive table
-        st.subheader("📋 School Data Table")
+        st.subheader("School Data Table")
         
         display_cols = ['Long_Name', 'Primary_Category', 
                        'Graduation_4_Year_School_Pct_Year_2',
@@ -362,7 +362,7 @@ def main():
             )
     
     # ---------- Page 3: Spatial Analysis ----------
-    elif page == "🗺️ Spatial Analysis":
+    elif page == "Spatial Analysis":
         st.header("Spatial Analysis")
         
         if schools_gdf is None or tracts_gdf is None:
@@ -579,12 +579,12 @@ def main():
                     st.metric("Maximum Transition Gap", f"{max_gap:.1f}%")
     
     # ---------- Page 4: Regression Results ----------
-    elif page == "📈 Regression Results":
+    elif page == "Regression Results":
         st.header("Regression Analysis Results")
         
         if reg_results is not None:
             # Display regression results table
-            st.subheader("📊 Regression Summary")
+            st.subheader("Regression Summary")
             
             # Format the table
             display_reg = reg_results.copy()
@@ -607,7 +607,7 @@ def main():
             st.dataframe(display_reg, use_container_width=True)
             
             # Interpretation
-            st.subheader("🔍 Interpretation")
+            st.subheader("Interpretation")
             
             col1, col2, col3 = st.columns(3)
             
@@ -668,7 +668,7 @@ def main():
                     st.info("ℹ️ **Not statistically significant**")
             
             # Visualize coefficients
-            st.subheader("📈 Coefficient Visualization")
+            st.subheader("Coefficient Visualization")
             
             fig = go.Figure()
             
@@ -702,7 +702,7 @@ def main():
             st.plotly_chart(fig, use_container_width=True)
             
             # Show scatter plots from saved images
-            st.subheader("📊 Regression Scatter Plots")
+            st.subheader("Regression Scatter Plots")
             
             try:
                 # Try to load and display the saved regression plots
@@ -723,11 +723,11 @@ def main():
                 st.warning(f"Could not load saved plots: {e}")
     
     # ---------- Page 5: Detailed Analysis ----------
-    elif page == "🔍 Detailed Analysis":
+    elif page == "Detailed Analysis":
         st.header("Detailed Analysis")
         
         # Neighborhood indicators analysis
-        st.subheader("🏘️ Neighborhood Indicators")
+        st.subheader("Neighborhood Indicators")
         
         if acs is not None:
             # Select indicators to visualize
@@ -762,7 +762,7 @@ def main():
             st.plotly_chart(fig, use_container_width=True)
             
             # Correlation with disadvantage score
-            st.subheader("🔗 Correlation with Disadvantage Score")
+            st.subheader("Correlation with Disadvantage Score")
             
             corr_with_ndi = acs[indicators + ['disadvantage_score']].corr()['disadvantage_score'].drop('disadvantage_score')
             
@@ -780,7 +780,7 @@ def main():
             st.plotly_chart(fig, use_container_width=True)
         
         # Advanced analysis options
-        st.subheader("🔬 Advanced Analysis")
+        st.subheader("Advanced Analysis")
         
         col1, col2 = st.columns(2)
         
@@ -819,7 +819,7 @@ def main():
             """)
         
         # Download data
-        st.subheader("💾 Download Data")
+        st.subheader("Download Data")
         
         col1, col2, col3 = st.columns(3)
         
