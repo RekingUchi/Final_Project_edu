@@ -158,7 +158,7 @@ def main():
             ### Data Sources
             1. **Chicago Public Schools (CPS)** - School-level outcomes
             2. **American Community Survey (ACS)** - Neighborhood characteristics
-            3. **UChicago Consortium on School Research** - Research framework
+            3. **Chicago Census Tract boundary shapefile** - Geographic boundaries for spatial linkage
             
             ### Methodology
             1. Construct Neighborhood Disadvantage Index using PCA
@@ -865,7 +865,7 @@ def main():
         **Data Sources**
         - Chicago Public Schools
         - American Community Survey
-        - UChicago Consortium
+        - Chicago Census Tract boundaries
         """)
     
     with col2:
