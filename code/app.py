@@ -92,7 +92,7 @@ def main():
     st.sidebar.info(f"""
     - **Schools**: {len(schools):,}
     - **Census Tracts**: {len(acs):,}
-    - **Variables**: 6 neighborhood indicators + 3 school outcomes
+    - **Variables**: 1 neighborhood disadvantage index + 3 school outcomes
     """)
     
     # Navigation
