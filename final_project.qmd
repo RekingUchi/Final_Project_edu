@@ -19,6 +19,8 @@ format:
     fig-pos: "H"
     header-includes:
       - \usepackage{float}
+jupyter: 
+  kernel: dap
 ---
 
 ```{python}
@@ -54,7 +56,7 @@ from sklearn.decomposition import PCA
 **Lecture Section:** PPHA-30538, M/W 10.30am/9.00am
 
 ## Research Question  
-Our research question is: **How does neighborhood disadvantage shape high-school graduation, college enrollment, and the gap between the two in Chicago?** Our goal is not to make strong causal claims, but to describe patterns and quantify how strongly place is associated with post-secondary opportunities.
+Chicago is one of the most residentially segregated cities in the U.S., and that shows up in education. Our research question is: **Does neighborhood disadvantage weaken the transition from high school graduation to college enrollment in Chicago?** Our goal is not to make strong causal claims, but to describe patterns and quantify how strongly place is associated with post-secondary opportunities.
 
 ## Data and Key Variables
 
@@ -74,7 +76,7 @@ Our analysis pipeline has four main steps, implemented in separate Python script
 
 2. **Build a Neighborhood Disadvantage Index (NDI)** (`preprocessing.py`): because the ACS variables are highly correlated, we use Principal Components Analysis (PCA) to combine the five indicators into a single standardized index for each tract.  
 
-3. **Attach NDI to schools and explore patterns** (`eda.py`, `spatial.py`, 'plot_spatial.py'): merge the school data with tract-level NDI, create summary tables by NDI quintile, and generate the static plots used in this write-up.  
+3. **Attach NDI to schools and explore patterns** (`eda.py`, `spatial.py`, `plot_spatial.py`): merge the school data with tract-level NDI, create summary tables by NDI quintile, and generate the static plots used in this write-up.  
 
 4. **Model relationships and build the dashboard** (`regression_analysis.py`, `app.py`): run linear regressions of outcomes on NDI and build a Streamlit app that allows users to interactively explore the maps and regression results.  
 ```{python}
