@@ -9,6 +9,7 @@ This project analyzes the relationship between neighborhood socioeconomic disadv
 **Access the live application here:** [https://finalprojectedu-nxk4horjs9f7bmnigz4x2a.streamlit.app/](https://finalprojectedu-nxk4horjs9f7bmnigz4x2a.streamlit.app/)
 
 The interactive dashboard allows you to:
+
 - Explore spatial patterns of educational outcomes across Chicago
 - Filter schools by various characteristics
 - Visualize relationships between neighborhood disadvantage and school outcomes
@@ -78,6 +79,7 @@ The project utilizes multiple data sources:
 ### Neighborhood Disadvantage Index (NDI)
 
 A composite measure calculated from:
+
 - Poverty rate
 - Unemployment rate
 - Educational attainment
@@ -85,6 +87,7 @@ A composite measure calculated from:
 - Other socioeconomic indicators
 
 ### Educational Outcomes
+
 - **Graduation Rate**: Percentage of students graduating within 4 years
 - **College Enrollment Rate**: Percentage of graduates enrolling in college
 - **Transition Gap**: Difference between graduation rate and college enrollment rate
@@ -102,7 +105,7 @@ A composite measure calculated from:
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/yourusername/Final_Project_edu.git
+git clone https://github.com/RekingUchi/Final_Project_edu.git
 cd Final_Project_edu
 ```
 
@@ -127,6 +130,7 @@ pip install -r requirements.txt
 ### 4. Prepare Data
 
 Place raw data files in the `data/raw-data/` directory. The expected files include:
+
 - CPS school performance data
 - ACS socioeconomic data
 - Chicago neighborhood shapefiles
@@ -169,24 +173,28 @@ streamlit run code/app.py
 ## Analysis Pipeline
 
 ### Step 1: Data Preprocessing (`preprocessing.py`)
+
 - Clean and merge multiple data sources
 - Handle missing values and outliers
 - Create consistent geographic identifiers
 - Generate initial derived variables
 
 ### Step 2: Spatial Analysis (`spatial.py`)
+
 - Geospatial data integration
 - Neighborhood disadvantage index calculation
 - Spatial autocorrelation analysis
 - Hotspot and coldspot identification
 
 ### Step 3: Spatial Visualization (`plot_spatial.py`)
+
 - Choropleth maps of disadvantage and outcomes
 - Spatial pattern visualization
 - Comparative analysis across neighborhoods
 - Geographic distribution plots
 
 ### Step 4: Exploratory Data Analysis (`eda.py`)
+
 - Summary statistics and distributions
 - Correlation analysis
 - Data quality checks
@@ -194,6 +202,7 @@ streamlit run code/app.py
 - Descriptive analysis of key variables
 
 ### Step 5: Statistical Modeling (`regression_analysis.py`)
+
 - Linear regression models
 - Model diagnostics and validation
 - Interpretation of coefficients
@@ -205,18 +214,21 @@ streamlit run code/app.py
 The Streamlit dashboard (`code/app.py`) provides:
 
 ### 1. **Overview Section**
+
 - Project introduction and methodology
 - Key statistics and metrics
 - Distribution visualizations
 - Correlation matrix
 
 ### 2. **School Analysis**
+
 - Scatter plots of outcomes vs. disadvantage
 - Transition gap analysis
 - Interactive data tables
 - School performance rankings
 
 ### 3. **Spatial Analysis**
+
 - Interactive maps of Chicago
 - Multiple map layers:
   - Neighborhood disadvantage scores
@@ -226,12 +238,14 @@ The Streamlit dashboard (`code/app.py`) provides:
 - School location markers with detailed popups
 
 ### 4. **Regression Results**
+
 - Statistical model summaries
 - Coefficient visualizations with confidence intervals
 - Interpretation of findings
 - Policy implications
 
 ### 5. **Detailed Analysis**
+
 - Neighborhood indicator distributions
 - Advanced analysis options
 - Data download capabilities
@@ -249,6 +263,7 @@ The Streamlit dashboard (`code/app.py`) provides:
 ## Technical Details
 
 ### Dependencies
+
 - Python 3.11+
 - pandas, numpy, scipy
 - geopandas, shapely
@@ -257,12 +272,15 @@ The Streamlit dashboard (`code/app.py`) provides:
 - streamlit, folium, streamlit-folium
 
 ### Computational Requirements
+
 - Minimum: 8GB RAM, 10GB disk space
 - Recommended: 16GB RAM for spatial analysis
 - All analysis can be run on standard laptops
 
 ### Deployment
+
 The application is deployed on Streamlit Cloud:
+
 - **URL**: https://finalprojectedu-nxk4horjs9f7bmnigz4x2a.streamlit.app/
 - **Framework**: Streamlit 1.28+
 - **Data**: All processed data included in deployment
@@ -310,6 +328,6 @@ For questions about this project, please contact the authors or create an issue 
 
 ---
 
-**Last Updated**: March 2026  
-**Live Dashboard**: [https://finalprojectedu-nxk4horjs9f7bmnigz4x2a.streamlit.app/](https://finalprojectedu-nxk4horjs9f7bmnigz4x2a.streamlit.app/)  
+**Last Updated**: March 2026
+**Live Dashboard**: [https://finalprojectedu-nxk4horjs9f7bmnigz4x2a.streamlit.app/](https://finalprojectedu-nxk4horjs9f7bmnigz4x2a.streamlit.app/)
 **GitHub Repository**: [https://github.com/yourusername/Final_Project_edu](https://github.com/yourusername/Final_Project_edu)
