@@ -1,0 +1,288 @@
+# CPS School Analysis: Neighborhood Disadvantage and Educational Outcomes
+# PPHA-30538 Final Project - University of Chicago, Winter 2026
+
+# ===================================================
+# Operating System Files
+# ===================================================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Windows
+Thumbs.db
+ehthumbs.db
+[Dd]esktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+
+# ===================================================
+# Python Specific
+# ===================================================
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+.python-version
+
+# pipenv
+Pipfile.lock
+
+# PEP 582
+__pypackages__/
+
+# Celery stuff
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# ===================================================
+# IDE and Editor Files
+# ===================================================
+# VS Code
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+# PyCharm
+.idea/
+*.iws
+*.iml
+*.ipr
+
+# Sublime Text
+*.sublime-*
+
+# Vim
+*.swp
+*.swo
+*~
+
+# Emacs
+*~
+\#*
+.#*
+
+# ===================================================
+# Data Files (Large files that shouldn't be committed)
+# ===================================================
+# Large data files (consider using Git LFS for these)
+*.csv
+*.xlsx
+*.xls
+*.dta
+*.sav
+*.rda
+*.rds
+*.feather
+*.parquet
+*.h5
+*.hdf5
+
+# Geospatial data files (often large)
+*.shp
+*.shx
+*.dbf
+*.prj
+*.kml
+*.kmz
+*.gpkg
+*.geojson
+
+# Image files (generated plots)
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.tiff
+*.svg
+
+# PDF files
+*.pdf
+
+# Archive files
+*.zip
+*.tar.gz
+*.rar
+*.7z
+
+# ===================================================
+# Project Specific Exclusions
+# ===================================================
+# Streamlit cache
+.streamlit/
+
+# Jupyter notebooks (if any)
+*.ipynb
+
+# Local configuration files
+config.local.yaml
+config.local.json
+.env.local
+
+# Temporary files
+*.tmp
+*.temp
+
+# Log files
+*.log
+logs/
+
+# ===================================================
+# Git Related
+# ===================================================
+# Git internal files
+.git/
+
+# Git LFS pointers (if using Git LFS)
+*.lfs.*
+
+# ===================================================
+# Docker
+# ===================================================
+# Docker
+Dockerfile
+.dockerignore
+
+# ===================================================
+# Documentation
+# ===================================================
+# Sphinx documentation
+docs/_build/
+
+# ===================================================
+# Custom Rules
+# ===================================================
+# Add any project-specific files or directories here
+# that should not be tracked by Git
+
+# Example: Local database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Example: API keys and secrets
+secrets.yaml
+credentials.json
+service-account-key.json
+
+# Example: Large model files
+*.pkl
+*.pickle
+*.joblib
+*.model
+*.h5
+*.hdf5
+
+# ===================================================
+# Notes
+# ===================================================
+# Remember:
+# - Use Git LFS for large files if needed
+# - Keep sensitive information out of version control
+# - Consider what files are generated vs. source files
+# - Review this file periodically as your project evolves
