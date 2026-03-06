@@ -1,0 +1,1141 @@
+---
+title: "CPS School Analysis Project Report"
+subtitle: "Neighborhood Disadvantage and School Outcomes in Chicago"
+author: "PPHA-30538 Final Project"
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    code-fold: true
+    code-summary: "Show code"
+    fig-align: "center"
+    echo: false
+    warning: false
+    message: false
+  pdf:
+    linestretch: 0.9
+    geometry:
+      - margin=0.5in
+    fig-pos: "H"
+    header-includes:
+      - \usepackage{float}
+---
+
+```{python}
+#| echo: false
+#| warning: false
+#| message: false
+
+# ============================================================================
+# IMPORT STATEMENTS
+# ============================================================================
+
+# Standard library imports
+import os
+from pathlib import Path
+
+# Third-party imports
+import requests
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+import statsmodels.api as sm
+import geopandas as gpd
+from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
+```
+
+## Project Information  
+**Group Members:**
+- Yijia Li (GitHub: yaro008)
+- Ruilin Yao (GitHub: RekingUchi)  
+- Ruoyan Cai (GitHub: ruoyancai279)  
+**Lecture Section:** PPHA-30538, M/W 10.30am/9.00am
+
+## Research Question  
+Our research question is: **How does neighborhood disadvantage shape high-school graduation, college enrollment, and the gap between the two in Chicago?** Our goal is not to make strong causal claims, but to describe patterns and quantify how strongly place is associated with post-secondary opportunities.
+
+## Data and Key Variables
+
+We combine three data sources:
+
+1. **American Community Survey (ACS)** – tract-level data for Cook County. We focus on five indicators of neighborhood disadvantage: poverty rate, (log) median income, unemployment rate, share of single-parent households, and rent-burden rate.  
+
+2. **CPS School Progress Reports** – school-level outcomes for 128 high schools, including four-year graduation rate, college enrollment rate, and the **transition gap** (graduation minus college enrollment).  
+
+3. **Chicago census-tract boundaries** – a KML shapefile from the Chicago Data Portal that provides the geometry for each tract so that we can match schools to neighborhoods.  
+
+## Approach and Coding Overview
+
+Our analysis pipeline has four main steps, implemented in separate Python scripts:
+
+1. **Clean and join data** (`preprocessing.py`): read raw ACS, CPS, and shapefile data, filter out tracts with implausible values, and assign each school to a census tract.  
+
+2. **Build a Neighborhood Disadvantage Index (NDI)** (`preprocessing.py`): because the ACS variables are highly correlated, we use Principal Components Analysis (PCA) to combine the five indicators into a single standardized index for each tract.  
+
+3. **Attach NDI to schools and explore patterns** (`eda.py`, `spatial.py`, 'plot_spatial.py'): merge the school data with tract-level NDI, create summary tables by NDI quintile, and generate the static plots used in this write-up.  
+
+4. **Model relationships and build the dashboard** (`regression_analysis.py`, `app.py`): run linear regressions of outcomes on NDI and build a Streamlit app that allows users to interactively explore the maps and regression results.  
+```{python}
+#| echo: false
+#| warning: false
+#| message: false
+
+# ════════════════════════════════════════════════
+# PATHS
+# ════════════════════════════════════════════════
+
+PROJECT_ROOT     = Path(os.getcwd()).resolve()
+RAW_DATA_DIR     = PROJECT_ROOT / "data" / "raw-data"
+DERIVED_DATA_DIR = PROJECT_ROOT / "data" / "derived-data"
+DERIVED_DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+# ════════════════════════════════════════════════
+# PART 1: CPS Data Cleaning
+# ════════════════════════════════════════════════
+
+# Load CPS data
+cps_file_path = RAW_DATA_DIR / "CPS_data.csv"
+df_cps = pd.read_csv(cps_file_path)
+
+# Filter to high schools and select needed columns
+cols = [
+    "School_ID", "Long_Name", "Primary_Category",
+    "School_Latitude", "School_Longitude",
+    "Graduation_4_Year_School_Pct_Year_2",
+    "College_Enrollment_School_Pct_Year_2",
+    "SAT_Grade_11_Score_School_Avg"
+]
+
+df_hs = df_cps[df_cps["Primary_Category"] == "HS"][cols].copy()
+
+# Drop rows missing graduation or enrollment data
+df_hs = df_hs.dropna(subset=[
+    "Graduation_4_Year_School_Pct_Year_2",
+    "College_Enrollment_School_Pct_Year_2"
+])
+
+# Construct Transition Gap
+df_hs["Transition_Gap"] = (
+    df_hs["Graduation_4_Year_School_Pct_Year_2"]
+    - df_hs["College_Enrollment_School_Pct_Year_2"]
+)
+
+# Save
+cps_clean_path = DERIVED_DATA_DIR / "CPS_clean_data.csv"
+df_hs.to_csv(cps_clean_path, index=False)
+
+# ════════════════════════════════════════════════
+# PART 2: ACS Data Download
+# ════════════════════════════════════════════════
+
+API_KEY  = "ef9b79a5ab62a54bb237c8b342a7bf5e5a1c502b"
+BASE_URL = "https://api.census.gov/data/2024/acs/acs5"
+STATE    = "17"   # Illinois
+COUNTY   = "031"  # Cook County
+
+variables = [
+    # poverty
+    "B17001_001E", "B17001_002E",
+    # income
+    "B19013_001E",
+    # labor force / unemployment
+    "B23025_003E", "B23025_005E",
+    # single-parent households
+    "B11004_001E", "B11004_010E", "B11004_016E",
+    # rent burden
+    "B25070_001E", "B25070_007E", "B25070_008E", "B25070_009E", "B25070_010E",
+]
+
+url = (
+    f"{BASE_URL}"
+    f"?get=NAME,{','.join(variables)}"
+    f"&for=tract:*"
+    f"&in=state:{STATE}%20county:{COUNTY}"
+    f"&key={API_KEY}"
+)
+
+response = requests.get(url)
+
+if response.status_code != 200:
+    exit()
+
+data = response.json()
+df = pd.DataFrame(data[1:], columns=data[0])
+df[variables] = df[variables].apply(pd.to_numeric, errors="coerce")
+
+# Construct derived variables
+df["poverty_rate"]      = df["B17001_002E"] / df["B17001_001E"]
+df["log_median_income"] = np.where(df["B19013_001E"] > 0, np.log(df["B19013_001E"]), np.nan)
+df["unemployment_rate"] = df["B23025_005E"] / df["B23025_003E"]
+df["single_parent_rate"] = (df["B11004_010E"] + df["B11004_016E"]) / df["B11004_001E"]
+df["rent_burden_rate"]  = (
+    df[["B25070_007E", "B25070_008E", "B25070_009E", "B25070_010E"]].sum(axis=1)
+    / df["B25070_001E"]
+)
+df["GEOID"] = df["state"] + df["county"] + df["tract"]
+
+clean_cols = [
+    "GEOID", "NAME",
+    "poverty_rate", "log_median_income", "unemployment_rate",
+    "single_parent_rate", "rent_burden_rate"
+]
+df_clean = df[clean_cols].copy()
+
+n_before = len(df_clean)
+df_clean = df_clean.dropna()
+n_after  = len(df_clean)
+
+# Save
+acs_raw_path   = DERIVED_DATA_DIR / "acs_raw_chicago.csv"
+acs_clean_path = DERIVED_DATA_DIR / "acs_clean_chicago.csv"
+df.to_csv(acs_raw_path, index=False)
+df_clean.to_csv(acs_clean_path, index=False)
+
+
+# ════════════════════════════════════════════════
+# PART 3: ACS Cleaning & PCA
+# ════════════════════════════════════════════════
+
+# Reload from saved files
+df_clean = pd.read_csv(acs_clean_path)
+df_raw   = pd.read_csv(acs_raw_path)
+
+df_clean["GEOID"] = df_clean["GEOID"].astype(str)
+df_raw["GEOID"]   = df_raw["GEOID"].astype(str)
+
+# Add population for filtering
+df_clean["population"] = (
+    df_raw.set_index("GEOID")["B17001_001E"]
+    .reindex(df_clean["GEOID"])
+    .values
+)
+
+# Remove low-population tracts and anomalous unemployment zeros
+df_clean = df_clean[df_clean["population"] > 100]
+df_clean = df_clean[df_clean["unemployment_rate"] > 0]
+
+# PCA
+pca_vars = [
+    "poverty_rate",
+    "log_median_income",
+    "unemployment_rate",
+    "single_parent_rate",
+    "rent_burden_rate"
+]
+
+X        = df_clean[pca_vars].values
+scaler   = StandardScaler()
+X_scaled = scaler.fit_transform(X)
+
+pca = PCA()
+pca.fit(X_scaled)
+
+# Scree Plot
+plt.figure(figsize=(6, 4))
+plt.plot(range(1, len(pca_vars) + 1), pca.explained_variance_ratio_,
+         'o-', color="#2E75B6", linewidth=2, markersize=7)
+plt.title("Scree Plot", fontsize=14)
+plt.xlabel("Principal Component", fontsize=12)
+plt.ylabel("Variance Explained", fontsize=12)
+plt.xticks(range(1, len(pca_vars) + 1))
+plt.grid(axis="y", linestyle="--", alpha=0.5)
+plt.tight_layout()
+scree_plot_path = DERIVED_DATA_DIR / "scree_plot.png"
+plt.savefig(scree_plot_path, dpi=150)
+plt.close()
+
+# Factor loadings and direction check
+loadings = pd.Series(pca.components_[0], index=pca_vars)
+
+scores = pca.transform(X_scaled)[:, 0]
+if loadings["poverty_rate"] < 0:
+    scores = -scores
+
+df_clean["disadvantage_score"] = scores
+
+# Save final PCA results
+acs_pca_path = DERIVED_DATA_DIR / "acs_with_pca_score.csv"
+df_clean.drop(columns=["population"]).to_csv(acs_pca_path, index=False)
+```
+
+# Exploratory and Spatial Analysis
+
+## Outcomes by Neighborhood Disadvantage Quintile
+
+To get an initial sense of patterns, we group schools into five quintiles of neighborhood disadvantage, where 1 is the least disadvantaged and 5 is the most disadvantaged. For each quintile we compute the average graduation rate, college enrollment rate, and transition gap.
+
+In the **least disadvantaged neighborhoods (quintile 1)**, the average graduation rate is about **87%**, and the college enrollment rate is about **70%**, leaving a transition gap of roughly **17 percentage points**.
+
+In more disadvantaged areas, both outcomes deteriorate. In the **most disadvantaged neighborhoods (quintile 5)**, graduation recovers slightly, but enrollment remains low, and the transition gap widens to more than **21 percentage points**.
+
+These descriptive patterns already suggest that **place matters**: schools located in more disadvantaged neighborhoods tend to have lower graduation and college enrollment, and a larger gap between the two.
+
+```{python}
+#| echo: false
+#| warning: false
+#| message: false
+
+# spatial.py
+#
+# Step 3: spatial join + prepare data for subsequent spatial analysis
+# - Read CPS school data (with coordinates + outcomes)
+# - Read ACS neighborhood disadvantage index (tract level)
+# - Read Chicago census tracts KML boundaries
+# - Spatially join: school points → tract GEOID
+# - Merge ACS disadvantage_score onto schools
+# - Create tract-level NDI layer for choropleth maps
+
+# ---------- Path settings ----------
+PROJECT_ROOT = Path(os.getcwd()).resolve()
+DERIVED_DATA_DIR = PROJECT_ROOT / "data" / "derived-data"
+RAW_DATA_DIR = PROJECT_ROOT / "data" / "raw-data"
+
+CPS_PATH = DERIVED_DATA_DIR / "CPS_clean_data.csv"
+ACS_PATH = DERIVED_DATA_DIR / "acs_with_pca_score.csv"
+
+# This follows our naming convention: data/raw-data/chicago_tracts_2010.kml
+TRACT_PATH = RAW_DATA_DIR / "chicago_tracts_2010.kml"
+
+
+# ---------- Load CPS / ACS ----------
+
+def load_cps() -> pd.DataFrame:
+    cps = pd.read_csv(CPS_PATH)
+    return cps
+
+
+def load_acs() -> pd.DataFrame:
+    acs = pd.read_csv(ACS_PATH)
+    # Ensure GEOID is a string so it can be merged with tract boundaries
+    acs["GEOID"] = acs["GEOID"].astype(str).str.zfill(11)
+    return acs
+
+
+# ---------- Schools → point geometries ----------
+
+def make_school_points(cps: pd.DataFrame) -> gpd.GeoDataFrame:
+    required = {"School_Longitude", "School_Latitude"}
+    if not required.issubset(cps.columns):
+        raise ValueError(f"CPS data missing: {required - set(cps.columns)}")
+
+    schools_gdf = gpd.GeoDataFrame(
+        cps,
+        geometry=gpd.points_from_xy(
+            cps["School_Longitude"], cps["School_Latitude"]
+        ),
+        crs="EPSG:4326",  # WGS84, latitude/longitude
+    )
+
+    return schools_gdf
+
+
+# ---------- Load tract KML and prepare GEOID ----------
+
+def load_tracts_from_kml() -> gpd.GeoDataFrame:
+    """
+    Read Chicago census tracts from a KML file and ensure a GEOID field exists.
+    The 2010 tracts from the Chicago Data Portal typically include geoid/geoid10.
+    """
+    tracts = gpd.read_file(TRACT_PATH, driver="KML")
+
+    # Try to find the GEOID column from several common names
+    possible_geoid_cols = ["GEOID", "geoid", "geoid10", "GEOID10"]
+    geoid_col = None
+    for col in possible_geoid_cols:
+        if col in tracts.columns:
+            geoid_col = col
+            break
+
+    if geoid_col is None:
+        raise ValueError(
+            "tract KML doesn't have GEOID"
+        )
+
+    # Standardize to a single GEOID field
+    tracts["GEOID"] = tracts[geoid_col].astype(str).str.zfill(11)
+
+    # Keep only necessary fields
+    tracts = tracts[["GEOID", "geometry"]].copy()
+
+    # KML is typically WGS84; set CRS explicitly just in case
+    if tracts.crs is None:
+        tracts.set_crs(epsg=4326, inplace=True)
+
+    return tracts
+
+
+# ---------- Spatial join + merge ACS ----------
+
+def spatial_join_schools_tracts(
+    schools_gdf: gpd.GeoDataFrame, tracts_gdf: gpd.GeoDataFrame
+) -> gpd.GeoDataFrame:
+    """
+    Match each school to the census tract it falls into (point-in-polygon),
+    producing a school-level table with GEOID.
+    """
+    # Ensure both layers use the same CRS
+    if schools_gdf.crs != tracts_gdf.crs:
+        tracts_gdf = tracts_gdf.to_crs(schools_gdf.crs)
+
+    joined = gpd.sjoin(
+        schools_gdf,
+        tracts_gdf[["GEOID", "geometry"]],
+        how="left",
+        predicate="within",
+    )
+
+    # sjoin adds an index_right column; drop it
+    if "index_right" in joined.columns:
+        joined = joined.drop(columns=["index_right"])
+
+    return joined
+
+
+def merge_schools_with_acs(
+    schools_with_geo: gpd.GeoDataFrame, acs: pd.DataFrame
+) -> gpd.GeoDataFrame:
+    """
+    Attach ACS disadvantage index and related variables to each school.
+    """
+    merged = schools_with_geo.merge(acs, on="GEOID", how="left")
+    return merged
+
+
+def make_tracts_with_acs(
+    tracts_gdf: gpd.GeoDataFrame, acs: pd.DataFrame
+) -> gpd.GeoDataFrame:
+    """
+    Build a tract-level GeoDataFrame for choropleth maps:
+    tracts + ACS disadvantage index.
+    """
+    tracts_with_acs = tracts_gdf.merge(acs, on="GEOID", how="left")
+    return tracts_with_acs
+
+
+# ---------- Main workflow ----------
+
+def main():
+    # 1. Load CPS / ACS
+    cps = load_cps()
+    acs = load_acs()
+
+    # 2. Convert schools to point geometries
+    schools_gdf = make_school_points(cps)
+
+    # 3. Load tract boundaries (KML)
+    tracts_gdf = load_tracts_from_kml()
+
+    # 4. Spatially join schools to tracts
+    schools_with_geo = spatial_join_schools_tracts(schools_gdf, tracts_gdf)
+
+    # 5. Merge ACS disadvantage index into school data
+    schools_with_acs = merge_schools_with_acs(schools_with_geo, acs)
+
+    # 6. Build tract-level NDI layer
+    tracts_with_acs = make_tracts_with_acs(tracts_gdf, acs)
+
+    # 7. Save outputs for later analysis / plots / dashboard
+    schools_csv_out = DERIVED_DATA_DIR / "schools_with_ndi.csv"
+    schools_gpkg_out = DERIVED_DATA_DIR / "schools_with_ndi.gpkg"
+    tracts_gpkg_out = DERIVED_DATA_DIR / "tracts_with_ndi.gpkg"
+
+    # School-level: save both csv and gpkg (for regression and point maps)
+    schools_with_acs.to_csv(schools_csv_out, index=False)
+    schools_with_acs.to_file(schools_gpkg_out, driver="GPKG")
+
+    # Tract-level: save gpkg for choropleth maps
+    tracts_with_acs.to_file(tracts_gpkg_out, driver="GPKG")
+
+
+if __name__ == "__main__":
+    main()
+```
+```{python}
+#| echo: false
+#| warning: false
+#| message: false
+# eda.py
+#
+# Basic data quality checks and non-spatial EDA
+# using the school-level dataset with neighborhood disadvantage index.
+
+# ---------- Paths ----------
+
+PROJECT_ROOT = Path(os.getcwd()).resolve()
+DERIVED_DATA_DIR = PROJECT_ROOT / "data" / "derived-data"
+
+SCHOOLS_PATH = DERIVED_DATA_DIR / "schools_with_ndi.csv"
+
+
+# ---------- Main script ----------
+
+# 1. Load data
+schools = pd.read_csv(SCHOOLS_PATH)
+
+# If geometry got saved as a column in the CSV, drop it for non-spatial EDA
+if "geometry" in schools.columns:
+    schools = schools.drop(columns=["geometry"])
+
+# 2. Missing values
+missing = schools.isna().sum()
+
+# 3. Summary statistics for key numeric variables
+numeric_candidates = [
+    "Graduation_4_Year_School_Pct_Year_2",
+    "College_Enrollment_School_Pct_Year_2",
+    "SAT_Grade_11_Score_School_Avg",
+    "Transition_Gap",
+    "disadvantage_score",
+    "poverty_rate",
+    "log_median_income",
+    "unemployment_rate",
+    "single_parent_rate",
+    "rent_burden_rate",
+]
+
+numeric_cols = [c for c in numeric_candidates if c in schools.columns]
+
+if numeric_cols:
+    summary = schools[numeric_cols].describe(
+        percentiles=[0.1, 0.25, 0.5, 0.75, 0.9]
+    )
+    # Optionally save to a CSV for later reference
+    summary_out = DERIVED_DATA_DIR / "eda_numeric_summary.csv"
+    summary.to_csv(summary_out)
+
+# 4. Outcomes by neighborhood disadvantage quintile
+if "disadvantage_score" in schools.columns:
+    # Drop rows without disadvantage_score
+    df = schools.dropna(subset=["disadvantage_score"]).copy()
+
+    try:
+        df["ndi_quintile"] = pd.qcut(
+            df["disadvantage_score"],
+            5,
+            labels=[1, 2, 3, 4, 5],
+        )
+    except ValueError:
+        ndi_quintile_table = None
+    else:
+        outcome_candidates = [
+            "Graduation_4_Year_School_Pct_Year_2",
+            "College_Enrollment_School_Pct_Year_2",
+            "Transition_Gap",
+        ]
+        outcome_cols = [c for c in outcome_candidates if c in df.columns]
+
+        if outcome_cols:
+            ndi_quintile_table = (
+                df.groupby("ndi_quintile")[outcome_cols].mean()
+            )
+            # Save this table for later plotting / report
+            quintile_out = (
+                DERIVED_DATA_DIR / "eda_outcomes_by_ndi_quintile.csv"
+            )
+            ndi_quintile_table.to_csv(quintile_out)
+
+import altair as alt
+from IPython.display import Image, display
+
+alt.data_transformers.disable_max_rows()
+
+# 5. Altair multi-line chart for outcomes by NDI quintile
+
+if "ndi_quintile_table" in locals() and ndi_quintile_table is not None:
+    plot_df = ndi_quintile_table.reset_index().copy()
+    plot_df["ndi_quintile"] = plot_df["ndi_quintile"].astype(int)
+
+    long_df = plot_df.melt(
+        id_vars="ndi_quintile",
+        value_vars=[
+            "Graduation_4_Year_School_Pct_Year_2",
+            "College_Enrollment_School_Pct_Year_2",
+            "Transition_Gap",
+        ],
+        var_name="outcome",
+        value_name="value",
+    )
+
+    outcome_labels = {
+        "Graduation_4_Year_School_Pct_Year_2": "Graduation Rate",
+        "College_Enrollment_School_Pct_Year_2": "College Enrollment Rate",
+        "Transition_Gap": "Transition Gap",
+    }
+    long_df["outcome"] = long_df["outcome"].map(outcome_labels)
+
+    outcome_chart = (
+        alt.Chart(long_df)
+        .mark_line(point=True)
+        .encode(
+            x=alt.X(
+                "ndi_quintile:O",
+                title="Neighborhood Disadvantage Quintile",
+                sort=[1, 2, 3, 4, 5],
+            ),
+            y=alt.Y(
+                "value:Q",
+                title="Average Outcome",
+            ),
+            color=alt.Color("outcome:N", title="Outcome"),
+            tooltip=[
+                alt.Tooltip("ndi_quintile:O", title="NDI Quintile"),
+                alt.Tooltip("outcome:N", title="Outcome"),
+                alt.Tooltip("value:Q", title="Average Value", format=".2f"),
+            ],
+        )
+        .properties(
+            title="School Outcomes by Neighborhood Disadvantage Quintile",
+            width=300,
+            height=80,
+        )
+    )
+
+    # save as png for PDF rendering
+    chart_path = DERIVED_DATA_DIR / "outcome_chart.png"
+    outcome_chart.save(str(chart_path), scale_factor=2)
+
+    display(Image(filename=str(chart_path)))
+```
+
+## Spatial Patterns in Static Plots
+
+Our static plots make these patterns visible on the map:  
+1. A **choropleth map of the Neighborhood Disadvantage Index** shows that lower disadvantage is concentrated on the North Side and along the lakefront, while higher disadvantage clusters on the South and West Sides.   
+2. A **map of schools colored by graduation rate** suggests that graduation has improved city-wide: high-graduation schools are scattered across both advantaged and disadvantaged neighborhoods.  
+3. A **map colored by college enrollment rate** reveals stronger spatial inequality: schools in more advantaged neighborhoods show much higher college enrollment than many schools on the South and West Sides.  
+4. A **map colored by the transition gap** highlights where students are most likely to be “lost” between graduation and enrollment; larger gaps tend to appear in more disadvantaged areas.  
+Together, these tables and maps provide a descriptive, non-causal answer to our research question: neighborhood disadvantage is closely associated with whether graduation translates into college enrollment.  
+
+```{python}
+#| echo: false
+#| warning: false
+#| message: false
+# plot_spatial.py
+#
+# Spatial analysis: create four maps
+# 1) Choropleth of neighborhood disadvantage (tract level)
+# 2) School points colored by graduation rate
+# 3) School points colored by college enrollment
+# 4) School points colored by transition gap
+
+# ---------- Paths ----------
+
+PROJECT_ROOT = Path(os.getcwd()).resolve()
+DERIVED_DATA_DIR = PROJECT_ROOT / "data" / "derived-data"
+
+TRACTS_PATH = DERIVED_DATA_DIR / "tracts_with_ndi.gpkg"
+SCHOOLS_PATH = DERIVED_DATA_DIR / "schools_with_ndi.gpkg"
+
+# ---------- Load data ----------
+
+tracts = gpd.read_file(TRACTS_PATH)
+schools = gpd.read_file(SCHOOLS_PATH)
+
+# Ensure both layers share the same CRS
+if tracts.crs != schools.crs:
+    schools = schools.to_crs(tracts.crs)
+
+# Drop any rows without geometry just in case
+tracts = tracts[tracts.geometry.notna()].copy()
+schools = schools[schools.geometry.notna()].copy()
+
+
+# ---------- Helper to make nice-looking plots ----------
+
+def _base_ax(figsize=(8, 8)):
+    fig, ax = plt.subplots(1, 1, figsize=figsize)
+    return fig, ax
+
+
+# ---------- Map 1: Neighborhood disadvantage choropleth ----------
+
+def plot_ndi_choropleth():
+    fig, ax = _base_ax()
+
+    tracts.plot(
+        ax=ax,
+        column="disadvantage_score",
+        cmap="RdYlBu_r",
+       linewidth=0.2,
+        edgecolor="grey",
+        legend=True,
+        legend_kwds={"shrink": 0.7, "label": "Neighborhood Disadvantage Index"},
+        missing_kwds={"color": "lightgrey", "hatch": "///", "label": "Missing"},
+    )
+
+    ax.set_axis_off()
+    ax.set_title(
+        "Neighborhood Disadvantage by Census Tract\nChicago, IL",
+        fontsize=12,
+    )
+    fig.tight_layout()
+
+    out_path = DERIVED_DATA_DIR / "map1_ndi_choropleth.png"
+    fig.savefig(out_path, dpi=300)
+    plt.close(fig)
+
+
+# ---------- Shared base for point maps ----------
+
+def _plot_school_points(
+    value_col: str,
+    title: str,
+    out_filename: str,
+    vmin=None,
+    vmax=None,
+):
+    """
+    Plot school points colored by a given column, with tract boundaries in the background.
+    """
+    fig, ax = _base_ax()
+
+    # light tract boundaries as background
+    tracts.boundary.plot(ax=ax, linewidth=0.3, color="lightgrey")
+
+    # filter rows that have non-missing values for the chosen column
+    df = schools.dropna(subset=[value_col]).copy()
+
+    # point plot
+    df.plot(
+        ax=ax,
+        column=value_col,
+        cmap="viridis",
+        markersize=35,
+        legend=True,
+        edgecolor="black",
+        linewidth=0.1,
+        vmin=vmin,
+        vmax=vmax,
+        legend_kwds={"shrink": 0.7, "label": value_col},
+    )
+
+    ax.set_axis_off()
+    ax.set_title(title, fontsize=12)
+    fig.tight_layout()
+
+    out_path = DERIVED_DATA_DIR / out_filename
+    fig.savefig(out_path, dpi=300)
+    plt.close(fig)
+
+
+# ---------- Map 2: schools colored by graduation ----------
+
+def plot_schools_by_graduation():
+    col = "Graduation_4_Year_School_Pct_Year_2"
+    _plot_school_points(
+        value_col=col,
+        title="Chicago High Schools\nColored by 4-Year Graduation Rate",
+        out_filename="map2_schools_graduation.png",
+        vmin=0,
+        vmax=100,
+    )
+
+
+# ---------- Map 3: schools colored by college enrollment ----------
+
+def plot_schools_by_enrollment():
+    col = "College_Enrollment_School_Pct_Year_2"
+    _plot_school_points(
+        value_col=col,
+        title="Chicago High Schools\nColored by College Enrollment Rate",
+        out_filename="map3_schools_college_enrollment.png",
+        vmin=0,
+        vmax=100,
+    )
+
+
+# ---------- Map 4: schools colored by transition gap ----------
+
+def plot_schools_by_transition_gap():
+    col = "Transition_Gap"
+
+    # For the gap we let vmin/vmax be from the data to show the full range
+    vmin = schools[col].min()
+    vmax = schools[col].max()
+
+    _plot_school_points(
+        value_col=col,
+        title="Chicago High Schools\nColored by Graduation–Enrollment Gap",
+        out_filename="map4_schools_transition_gap.png",
+        vmin=vmin,
+        vmax=vmax,
+    )
+
+
+# ---------- Main ----------
+
+def main():
+    plot_ndi_choropleth()
+    plot_schools_by_graduation()
+    plot_schools_by_enrollment()
+    plot_schools_by_transition_gap()
+
+
+if __name__ == "__main__":
+    main()
+
+# ---------- Combined figure for Quarto / PDF ----------
+
+def plot_all_maps_one_row():
+    fig, axes = plt.subplots(1, 4, figsize=(22, 5))
+
+    # ----- Map 1: NDI choropleth -----
+    tracts.plot(
+        ax=axes[0],
+        column="disadvantage_score",
+        cmap="RdYlBu_r",
+        linewidth=0.2,
+        edgecolor="grey",
+        legend=True,
+        legend_kwds={
+            "shrink": 0.6,
+            "label": "NDI",
+            "orientation": "horizontal",
+            "pad": 0.02,
+        },
+        missing_kwds={"color": "lightgrey", "hatch": "///", "label": "Missing"},
+    )
+    axes[0].set_axis_off()
+    axes[0].set_title("NDI by Tract", fontsize=11)
+
+    # ----- Map 2: schools by graduation -----
+    tracts.boundary.plot(ax=axes[1], linewidth=0.3, color="lightgrey")
+    schools_grad = schools.dropna(subset=["Graduation_4_Year_School_Pct_Year_2"]).copy()
+    schools_grad.plot(
+        ax=axes[1],
+        column="Graduation_4_Year_School_Pct_Year_2",
+        cmap="viridis",
+        markersize=20,
+        legend=True,
+        edgecolor="black",
+        linewidth=0.1,
+        vmin=0,
+        vmax=100,
+        legend_kwds={
+            "shrink": 0.6,
+            "label": "Grad Rate",
+            "orientation": "horizontal",
+            "pad": 0.02,
+        },
+    )
+    axes[1].set_axis_off()
+    axes[1].set_title("Graduation Rate", fontsize=11)
+
+    # ----- Map 3: schools by college enrollment -----
+    tracts.boundary.plot(ax=axes[2], linewidth=0.3, color="lightgrey")
+    schools_enroll = schools.dropna(subset=["College_Enrollment_School_Pct_Year_2"]).copy()
+    schools_enroll.plot(
+        ax=axes[2],
+        column="College_Enrollment_School_Pct_Year_2",
+        cmap="viridis",
+        markersize=20,
+        legend=True,
+        edgecolor="black",
+        linewidth=0.1,
+        vmin=0,
+        vmax=100,
+        legend_kwds={
+            "shrink": 0.6,
+            "label": "College Enroll",
+            "orientation": "horizontal",
+            "pad": 0.02,
+        },
+    )
+    axes[2].set_axis_off()
+    axes[2].set_title("College Enrollment", fontsize=11)
+
+    # ----- Map 4: schools by transition gap -----
+    tracts.boundary.plot(ax=axes[3], linewidth=0.3, color="lightgrey")
+    schools_gap = schools.dropna(subset=["Transition_Gap"]).copy()
+    schools_gap.plot(
+        ax=axes[3],
+        column="Transition_Gap",
+        cmap="viridis",
+        markersize=20,
+        legend=True,
+        edgecolor="black",
+        linewidth=0.1,
+        vmin=schools_gap["Transition_Gap"].min(),
+        vmax=schools_gap["Transition_Gap"].max(),
+        legend_kwds={
+            "shrink": 0.6,
+            "label": "Gap",
+            "orientation": "horizontal",
+            "pad": 0.02,
+        },
+    )
+    axes[3].set_axis_off()
+    axes[3].set_title("Grad–Enroll Gap", fontsize=11)
+
+    fig.suptitle("Chicago Neighborhood Disadvantage and School Outcomes", fontsize=14, y=1.02)
+    fig.tight_layout()
+
+    out_path = DERIVED_DATA_DIR / "all_maps_one_row.png"
+    fig.savefig(out_path, dpi=300, bbox_inches="tight")
+
+    plt.show()
+
+
+# ---------- Run combined plot for PDF output ----------
+plot_all_maps_one_row()
+```
+
+## Regression Results and Interpretation
+
+We estimate three simple linear regressions at the school level, using NDI as the main predictor and separately modeling (1) graduation rate, (2) college enrollment rate, and (3) the transition gap.
+
+The results show a clear pattern. A one-unit increase in neighborhood disadvantage is associated with about a **1.7 percentage point decrease in graduation rate** and a **2.5 percentage point decrease in college enrollment**, and both effects are statistically significant at conventional levels. The negative effect on college enrollment is larger in magnitude, suggesting that disadvantage is especially important at the step from graduation to college.
+
+For the **transition gap**, the estimated coefficient is positive—students in more disadvantaged neighborhoods appear somewhat more likely to “fall off” between graduation and college enrollment—but this effect is **not statistically significant** in our baseline model. We suspect this is partly because the model is deliberately simple (we do not include additional school-level controls or non-linear terms) and partly because the sample size is modest (128 high schools). We view this coefficient as a suggestive trend rather than strong causal evidence.
+
+```{python}
+#| echo: false
+#| warning: false
+#| message: false
+# regression_analysis.py
+#
+# Step 4: Regression analysis and visualization
+# - Load school-level data with neighborhood disadvantage index
+# - Run three regression models:
+#   1. Graduation rate ~ disadvantage score
+#   2. College enrollment rate ~ disadvantage score  
+#   3. Transition gap ~ disadvantage score
+# - Create scatter plots with regression lines
+# - Save regression results and plots
+
+# ---------- Paths ----------
+
+PROJECT_ROOT = Path(os.getcwd()).resolve()
+DERIVED_DATA_DIR = PROJECT_ROOT / "data" / "derived-data"
+
+SCHOOLS_PATH = DERIVED_DATA_DIR / "schools_with_ndi.csv"
+OUTPUT_DIR = DERIVED_DATA_DIR
+
+# ---------- Load data ----------
+
+schools = pd.read_csv(SCHOOLS_PATH)
+
+# If geometry column exists, drop it for regression analysis
+if "geometry" in schools.columns:
+    schools = schools.drop(columns=["geometry"])
+
+# Check for missing values in key variables
+key_vars = ["Graduation_4_Year_School_Pct_Year_2", 
+            "College_Enrollment_School_Pct_Year_2",
+            "Transition_Gap", 
+            "disadvantage_score"]
+
+# Remove rows with missing values in key variables for regression
+schools_clean = schools.dropna(subset=key_vars).copy()
+
+# ---------- Descriptive statistics ----------
+
+desc_stats = schools_clean[key_vars].describe()
+
+# Save descriptive statistics
+desc_stats.to_csv(OUTPUT_DIR / "regression_descriptive_stats.csv")
+
+# ---------- Regression functions ----------
+
+def run_ols_regression(y, X, y_name, X_name):
+    """Run OLS regression and return results"""
+    # Add constant for intercept
+    X_with_const = sm.add_constant(X)
+    
+    # Fit model
+    model = sm.OLS(y, X_with_const)
+    results = model.fit()
+    
+    # Extract key statistics
+    coef = results.params[1]
+    coef_se = results.bse[1]
+    p_value = results.pvalues[1]
+    r_squared = results.rsquared
+    n_obs = results.nobs
+    
+    return {
+        "y_name": y_name,
+        "X_name": X_name,
+        "coef": coef,
+        "coef_se": coef_se,
+        "p_value": p_value,
+        "r_squared": r_squared,
+        "n_obs": n_obs,
+        "results": results
+    }
+
+# ---------- Run three regression models ----------
+
+# Model 1: Graduation rate ~ disadvantage score
+results1 = run_ols_regression(
+    y=schools_clean["Graduation_4_Year_School_Pct_Year_2"],
+    X=schools_clean["disadvantage_score"],
+    y_name="Graduation Rate",
+    X_name="Neighborhood Disadvantage Score"
+)
+
+# Model 2: College enrollment rate ~ disadvantage score
+results2 = run_ols_regression(
+    y=schools_clean["College_Enrollment_School_Pct_Year_2"],
+    X=schools_clean["disadvantage_score"],
+    y_name="College Enrollment Rate",
+    X_name="Neighborhood Disadvantage Score"
+)
+
+# Model 3: Transition gap ~ disadvantage score
+results3 = run_ols_regression(
+    y=schools_clean["Transition_Gap"],
+    X=schools_clean["disadvantage_score"],
+    y_name="Transition Gap (Graduation - Enrollment)",
+    X_name="Neighborhood Disadvantage Score"
+)
+
+# ---------- Compile regression results ----------
+
+regression_results = pd.DataFrame([
+    {
+        "Model": "Graduation ~ Disadvantage",
+        "Dependent Variable": "Graduation Rate (%)",
+        "Independent Variable": "Disadvantage Score",
+        "Coefficient": results1["coef"],
+        "Std Error": results1["coef_se"],
+        "P-value": results1["p_value"],
+        "R-squared": results1["r_squared"],
+        "N": results1["n_obs"]
+    },
+    {
+        "Model": "Enrollment ~ Disadvantage",
+        "Dependent Variable": "College Enrollment Rate (%)",
+        "Independent Variable": "Disadvantage Score",
+        "Coefficient": results2["coef"],
+        "Std Error": results2["coef_se"],
+        "P-value": results2["p_value"],
+        "R-squared": results2["r_squared"],
+        "N": results2["n_obs"]
+    },
+    {
+        "Model": "Transition Gap ~ Disadvantage",
+        "Dependent Variable": "Transition Gap (%)",
+        "Independent Variable": "Disadvantage Score",
+        "Coefficient": results3["coef"],
+        "Std Error": results3["coef_se"],
+        "P-value": results3["p_value"],
+        "R-squared": results3["r_squared"],
+        "N": results3["n_obs"]
+    }
+])
+
+# Save regression results
+regression_results.to_csv(OUTPUT_DIR / "regression_results_summary.csv", index=False)
+
+# ---------- Visualization ----------
+
+# Set style
+sns.set_style("whitegrid")
+plt.rcParams['font.size'] = 10
+plt.rcParams['axes.titlesize'] = 12
+plt.rcParams['axes.labelsize'] = 11
+
+# Create figure with 3 subplots
+fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+
+# Plot 1: Graduation rate vs disadvantage score
+ax1 = axes[0]
+sns.scatterplot(
+    data=schools_clean,
+    x="disadvantage_score",
+    y="Graduation_4_Year_School_Pct_Year_2",
+    alpha=0.6,
+    edgecolor='w',
+    linewidth=0.5,
+    ax=ax1
+)
+
+# Add regression line
+x_range = np.linspace(
+    schools_clean["disadvantage_score"].min(),
+    schools_clean["disadvantage_score"].max(),
+    100
+)
+y_pred = results1["results"].params[0] + results1["results"].params[1] * x_range
+ax1.plot(x_range, y_pred, color='red', linewidth=2, label='Regression line')
+
+ax1.set_xlabel("Neighborhood Disadvantage Score")
+ax1.set_ylabel("Graduation Rate (%)")
+ax1.set_title("Graduation Rate vs Neighborhood Disadvantage")
+ax1.legend()
+
+# Add regression equation and R²
+eq_text = f"y = {results1['coef']:.2f}x + {results1['results'].params[0]:.2f}\nR² = {results1['r_squared']:.3f}"
+ax1.text(0.05, 0.95, eq_text, transform=ax1.transAxes, 
+         verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
+
+# Plot 2: College enrollment rate vs disadvantage score
+ax2 = axes[1]
+sns.scatterplot(
+    data=schools_clean,
+    x="disadvantage_score",
+    y="College_Enrollment_School_Pct_Year_2",
+    alpha=0.6,
+    edgecolor='w',
+    linewidth=0.5,
+    ax=ax2
+)
+
+# Add regression line
+y_pred = results2["results"].params[0] + results2["results"].params[1] * x_range
+ax2.plot(x_range, y_pred, color='red', linewidth=2, label='Regression line')
+
+ax2.set_xlabel("Neighborhood Disadvantage Score")
+ax2.set_ylabel("College Enrollment Rate (%)")
+ax2.set_title("College Enrollment Rate vs Neighborhood Disadvantage")
+ax2.legend()
+
+# Add regression equation and R²
+eq_text = f"y = {results2['coef']:.2f}x + {results2['results'].params[0]:.2f}\nR² = {results2['r_squared']:.3f}"
+ax2.text(0.05, 0.95, eq_text, transform=ax2.transAxes, 
+         verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
+
+# Plot 3: Transition gap vs disadvantage score
+ax3 = axes[2]
+sns.scatterplot(
+    data=schools_clean,
+    x="disadvantage_score",
+    y="Transition_Gap",
+    alpha=0.6,
+    edgecolor='w',
+    linewidth=0.5,
+    ax=ax3
+)
+
+# Add regression line
+y_pred = results3["results"].params[0] + results3["results"].params[1] * x_range
+ax3.plot(x_range, y_pred, color='red', linewidth=2, label='Regression line')
+
+ax3.set_xlabel("Neighborhood Disadvantage Score")
+ax3.set_ylabel("Transition Gap (%)")
+ax3.set_title("Transition Gap vs Neighborhood Disadvantage")
+ax3.legend()
+
+# Add regression equation and R²
+eq_text = f"y = {results3['coef']:.2f}x + {results3['results'].params[0]:.2f}\nR² = {results3['r_squared']:.3f}"
+ax3.text(0.05, 0.95, eq_text, transform=ax3.transAxes, 
+         verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
+
+# Adjust layout and save
+plt.tight_layout()
+plot_path = OUTPUT_DIR / "regression_scatter_plots.png"
+plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+```
+
+## Coding Challenges
+
+Highly correlated ACS variables. The poverty, income, unemployment, family structure, and rent-burden variables were strongly correlated, which made it hard to include them separately in regressions. We used **PCA** to extract a single Neighborhood Disadvantage Index that captures their common variation while avoiding multicollinearity.  
+Additionally, our cross-sectional design cannot establish causality — the observed associations may reflect unmeasured confounders such as school funding or teacher quality. With only 128 schools in our sample, statistical power is also limited, which likely explains why the transition gap model did not reach significance despite a directionally consistent coefficient.
+
+## Streamlit App
+
+Our `app.py` file turns the analysis into an interactive dashboard. Users can view the NDI choropleth and overlay schools,  hover over points to see school names and outcomesand, and compare how outcomes change across the NDI distribution. This directly supports our research question by allowing users to explore how neighborhood context and school outcomes are related in different parts of Chicago.  
+The combined quantitative, spatial, and interactive approach gives a clear and policy-relevant picture: in Chicago, where a school is located is closely tied to whether its students make the leap from high school to college.
