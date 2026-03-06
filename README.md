@@ -330,4 +330,3 @@ For questions about this project, please contact the authors or create an issue 
 
 **Last Updated**: March 2026
 **Live Dashboard**: [https://finalprojectedu-nxk4horjs9f7bmnigz4x2a.streamlit.app/](https://finalprojectedu-nxk4horjs9f7bmnigz4x2a.streamlit.app/)
-**GitHub Repository**: [https://github.com/yourusername/Final_Project_edu](https://github.com/yourusername/Final_Project_edu)
