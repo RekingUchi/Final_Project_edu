@@ -137,3 +137,60 @@ else:
 if "Primary_Category" in schools.columns:
     print("\n=== School type counts (Primary_Category) ===")
     print(schools["Primary_Category"].value_counts())
+
+import altair as alt
+from IPython.display import Image, display
+
+alt.data_transformers.disable_max_rows()
+
+if "ndi_quintile_table" in locals() and ndi_quintile_table is not None:
+    plot_df = ndi_quintile_table.reset_index().copy()
+    plot_df["ndi_quintile"] = plot_df["ndi_quintile"].astype(int)
+
+    long_df = plot_df.melt(
+        id_vars="ndi_quintile",
+        value_vars=[
+            "Graduation_4_Year_School_Pct_Year_2",
+            "College_Enrollment_School_Pct_Year_2",
+            "Transition_Gap",
+        ],
+        var_name="outcome",
+        value_name="value",
+    )
+
+    outcome_labels = {
+        "Graduation_4_Year_School_Pct_Year_2": "Graduation Rate",
+        "College_Enrollment_School_Pct_Year_2": "College Enrollment Rate",
+        "Transition_Gap": "Transition Gap",
+    }
+    long_df["outcome"] = long_df["outcome"].map(outcome_labels)
+
+    outcome_chart = (
+        alt.Chart(long_df)
+        .mark_line(point=True)
+        .encode(
+            x=alt.X(
+                "ndi_quintile:O",
+                title="NDI Quintile",
+                sort=[1, 2, 3, 4, 5],
+            ),
+            y=alt.Y(
+                "value:Q",
+                title="Average Outcome",
+            ),
+            color=alt.Color("outcome:N", title="Outcome"),
+            tooltip=[
+                alt.Tooltip("ndi_quintile:O", title="NDI Quintile"),
+                alt.Tooltip("outcome:N", title="Outcome"),
+                alt.Tooltip("value:Q", title="Average Value", format=".2f"),
+            ],
+        )
+        .properties(
+            title="School Outcomes by NDI Quintile",
+            width=380,
+            height=220,
+        )
+    )
+
+    chart_path = DERIVED_DATA_DIR / "outcome_chart.png"
+    outcome_chart.save(str(chart_path), scale_factor=2)
